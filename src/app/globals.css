@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-100 text-slate-800 antialiased;
+}
+
+::selection {
+  @apply bg-brand-200 text-brand-950;
+}
+
+/* Scrollbar tipis untuk area tabel */
+.overflow-auto::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.overflow-auto::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
+}
+.overflow-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Halaman QR: saat dicetak, hanya kartu QR yang tampil */
+@media print {
+  body {
+    background: white !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-qr-area,
+  .print-qr-area * {
+    visibility: visible;
+  }
+  .print-qr-area {
+    position: absolute;
+    left: 50%;
+    top: 40px;
+    transform: translateX(-50%);
+    width: 420px;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
