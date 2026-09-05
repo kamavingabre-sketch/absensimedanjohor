@@ -12,7 +12,7 @@ import {
 } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusKegiatanBadge } from "@/components/status-badge";
-import { CheckInButton } from "@/components/absensi/check-in-button";
+import { AutoCheckIn } from "@/components/absensi/auto-check-in";
 
 export const dynamic = "force-dynamic";
 
@@ -118,13 +118,7 @@ export default async function KodeKegiatanPage({
                 lagi digunakan untuk absen.
               </p>
             ) : (
-              <>
-                <p className="mb-3 text-sm text-slate-600">
-                  Tekan tombol di bawah untuk mencatat kehadiran Anda pada
-                  kegiatan ini.
-                </p>
-                <CheckInButton kegiatanId={k.id} size="lg" label="Hadir — Catat Kehadiran" />
-              </>
+              <AutoCheckIn kegiatanId={k.id} />
             )}
           </div>
         </CardContent>
