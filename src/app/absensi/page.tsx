@@ -115,13 +115,16 @@ export default async function AbsensiPage({
       ) : (
         <>
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">
-                Kegiatan Berlangsung
-              </h2>
-              <span className="text-xs text-slate-400">
-                {berlangsung.length} kegiatan
-              </span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                  Kegiatan Berlangsung
+                </h2>
+                <span className="text-xs text-slate-400">
+                  {berlangsung.length} kegiatan
+                </span>
+              </div>
+              <QrScannerDialog />
             </div>
 
             {berlangsung.length === 0 ? (
