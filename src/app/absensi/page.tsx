@@ -13,7 +13,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusKegiatanBadge } from "@/components/status-badge";
-import { CheckInButton } from "@/components/absensi/check-in-button";
 import { QrScannerDialog } from "@/components/absensi/qr-scanner-dialog";
 
 export const dynamic = "force-dynamic";
@@ -82,8 +81,8 @@ export default async function AbsensiPage({
           {namaDepan ? `Selamat datang, ${namaDepan}` : "Selamat datang"}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {formatTanggal(new Date())}. Aktivasi GPS pada perangkat Anda agar
-          titik lokasi ikut tercatat.
+          {formatTanggal(new Date())}. Absensi kehadiran dilakukan dengan
+          memindai kode QR kegiatan yang disediakan petugas.
         </p>
       </div>
 
@@ -172,7 +171,18 @@ export default async function AbsensiPage({
                             Anda sudah tercatat hadir untuk kegiatan ini.
                           </div>
                         ) : (
-                          <CheckInButton kegiatanId={k.id} />
+                          <div className="flex items-center gap-3 rounded-md border border-brand-200 bg-brand-50 px-4 py-3">
+                            <ScanLine className="h-5 w-5 shrink-0 text-brand-700" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-brand-800">
+                                Pindai QR untuk absen
+                              </p>
+                              <p className="mt-0.5 text-xs text-brand-600">
+                                Kehadiran hanya dapat dicatat melalui pemindaian
+                                QR kode kegiatan.
+                              </p>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </CardContent>
@@ -251,8 +261,7 @@ export default async function AbsensiPage({
 
       <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
         <ScanLine className="h-3.5 w-3.5" />
-        Pindai QR langsung dari petugas melalui tombol di atas kegiatan, atau
-        pakai aplikasi kamera ponsel.
+        Absensi kehadiran hanya melalui pemindaian QR kode kegiatan.
       </p>
     </div>
   );
