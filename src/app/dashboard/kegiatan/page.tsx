@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusKegiatanBadge } from "@/components/status-badge";
+import { BadgeJenis } from "@/components/jenis-badge";
 import { CreateKegiatanDialog } from "@/components/dashboard/create-kegiatan-dialog";
 import { KegiatanRowActions } from "@/components/dashboard/kegiatan-row-actions";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +43,9 @@ export default async function KegiatanPage() {
             <Badge variant="info">{rows.length}</Badge>
           </div>
           <p className="mt-1 text-sm text-slate-500">
-            Setiap kegiatan memiliki kode QR tersendiri untuk absensi pegawai.
+            Setiap kegiatan memiliki kode QR tersendiri. Pilih jenis pesertanya
+            (ASN / PPPK / PPPSU / Kepling); kehadiran tercatat setelah peserta
+            mengirimkan foto bukti.
           </p>
         </div>
         <CreateKegiatanDialog />
@@ -69,6 +72,7 @@ export default async function KegiatanPage() {
                 <TableHead>Nama Kegiatan</TableHead>
                 <TableHead className="whitespace-nowrap">Waktu</TableHead>
                 <TableHead>Lokasi</TableHead>
+                <TableHead>Jenis Peserta</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-center">Hadir</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
@@ -98,6 +102,9 @@ export default async function KegiatanPage() {
                       <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                       <span className="truncate">{k.location ?? "—"}</span>
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    <BadgeJenis kategori={k.kategori} />
                   </TableCell>
                   <TableCell>
                     <StatusKegiatanBadge kegiatan={k} />

@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, supabaseTerkonfigurasi } from "@/lib/supabase/server";
+import {
+  jenisKegiatan,
+  jenisPegawai,
+  labelJenis,
+} from "@/lib/utils";
 
 export interface CheckInState {
   error?: string;
@@ -10,6 +15,8 @@ export interface CheckInState {
 
 interface CheckInPayload {
   kegiatanId: string;
+  /** Path objek di Storage bucket "bukti-kehadiran" — WAJIB diisi. */
+  fotoBukti?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   accuracy?: number | null;
@@ -43,6 +50,36 @@ export async function checkIn(
   if (now < start) return { error: "Kegiatan belum dimulai. Silakan absen setelah kegiatan dibuka." };
   if (now > end) return { error: "Waktu absen kegiatan ini telah selesai." };
 
+  // --- Gerbang kategori peserta: kegiatan ASN hanya bisa diabsensi ASN, dst. ---
+  const { data: profile } = await supabase!
+    .from("profiles")
+    .select("staff_type, staff_status")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const jenisPeserta = jenisKegiatan(kegiatan);
+  const jenisAkun = jenisPegawai(profile);
+  const diundang = jenisAkun.some((t) => jenisPeserta.includes(t));
+  if (!diundang) {
+    const akun = jenisAkun.length ? labelJenis(jenisAkun) : "bukan ASN/PPPK/PPPSU/Kepling";
+    return {
+      error:
+        `Kegiatan ini khusus untuk kategori ${labelJenis(jenisPeserta)}, ` +
+        `sedangkan akun Anda terdaftar sebagai ${akun}. Anda tidak dapat absen ` +
+        "pada kegiatan ini.",
+    };
+  }
+
+  // --- Foto bukti kehadiran wajib dikirim sebelum absen tercatat. ---
+  const fotoBukti = String(payload.fotoBukti ?? "").trim();
+  if (!fotoBukti || !fotoBukti.startsWith(`${userId}/`)) {
+    return {
+      error:
+        "Foto bukti kehadiran wajib dikirim sebelum absen dapat tercatat. " +
+        "Silakan ambil/pilih foto lalu kirim kembali.",
+    };
+  }
+
   const { data: existing } = await supabase!
     .from("absensi")
     .select("id")
@@ -57,6 +94,7 @@ export async function checkIn(
   const { error: insertError } = await supabase!.from("absensi").insert({
     kegiatan_id: kegiatan.id,
     user_id: userId,
+    foto_bukti: fotoBukti,
     latitude: payload.latitude ?? null,
     longitude: payload.longitude ?? null,
     accuracy: payload.accuracy ?? null,

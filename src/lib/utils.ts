@@ -7,6 +7,10 @@ export function cn(...inputs: ClassValue[]) {
 
 export type KegiatanStatus = "terjadwal" | "berlangsung" | "selesai" | "ditiadakan";
 
+/** Kategori pegawai yang absensinya dibedakan per kegiatan. */
+export const JENIS_ABSEN = ["ASN", "PPPK", "PPPSU", "Kepling"] as const;
+export type JenisAbsen = (typeof JENIS_ABSEN)[number];
+
 export interface Kegiatan {
   id: string;
   code: string;
@@ -17,6 +21,8 @@ export interface Kegiatan {
   ends_at: string;
   is_active: boolean;
   created_at: string;
+  /** Kategori peserta yang boleh absen (kosong = semua jenis, perilaku lama). */
+  kategori?: string[] | null;
 }
 
 export interface Profile {
@@ -85,13 +91,63 @@ export function formatTanggalJam(d: Date | string) {
   return formatterDTT.format(new Date(d)).replace(".", ":");
 }
 
-/**
- * Supabase mengembalikan relasi tertanam sebagai array —
- * ambil elemennya yang pertama dengan aman.
- */
+/** Supabase mengembalikan relasi tertanam sebagai array —
+ *  ambil elemennya yang pertama dengan aman. */
 export function first<T>(v: T | T[] | null | undefined): T | null {
   if (v == null) return null;
   return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+/* ===================== Kategori / jenis pegawai & kegiatan ===================== */
+
+/** Urutan kanonik label kategori (ASN → PPPK → PPPSU → Kepling). */
+export const JENIS_LABEL: Record<string, string> = {
+  ASN: "ASN",
+  PPPK: "PPPK",
+  PPPSU: "PPPSU",
+  Kepling: "Kepling",
+};
+
+/** Kategori kegiatan yang valid; array kosong/`null` berarti semua jenis. */
+export function jenisKegiatan(kegiatan: { kategori?: string[] | null } | null | undefined): JenisAbsen[] {
+  const v = kegiatan?.kategori;
+  const arr = Array.isArray(v)
+    ? v.filter((x): x is JenisAbsen => (JENIS_ABSEN as readonly string[]).includes(x))
+    : [];
+  return arr.length ? [...new Set(arr)] : [...JENIS_ABSEN];
+}
+
+/** Kategori pegawai (gabungan staff_status + staff_type; fallback ke staff_type). */
+export function jenisPegawai(
+  profile: {
+    staff_type?: string | null;
+    staff_status?: string[] | null;
+  } | null | undefined
+): JenisAbsen[] {
+  const s = profile?.staff_status;
+  const arr = Array.isArray(s) && s.length ? s : profile?.staff_type ? [profile.staff_type] : [];
+  const out = arr.filter((x): x is JenisAbsen => (JENIS_ABSEN as readonly string[]).includes(x));
+  return [...new Set(out)];
+}
+
+/** Apakah pegawai boleh absen pada kegiatan dengan kategori tsb. */
+export function bolehAbsenKegiatan(
+  kegiatan: { kategori?: string[] | null } | null | undefined,
+  profile: {
+    staff_type?: string | null;
+    staff_status?: string[] | null;
+  } | null | undefined
+): boolean {
+  const kj = jenisKegiatan(kegiatan);
+  const pj = jenisPegawai(profile);
+  return pj.some((t) => kj.includes(t));
+}
+
+/** Label pendek daftar jenis, mis. "ASN · Kepling" atau "Semua Jenis". */
+export function labelJenis(list: JenisAbsen[] | string[] | undefined | null): string {
+  const arr = jenisKegiatan({ kategori: (list as string[] | undefined) ?? null });
+  if (arr.length === JENIS_ABSEN.length) return "Semua Jenis";
+  return arr.map((t) => JENIS_LABEL[t] ?? t).join(" · ");
 }
 
 /** Milisek awal hari ini (WIB) untuk kueri "hari ini". */

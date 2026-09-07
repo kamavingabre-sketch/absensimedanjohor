@@ -3,16 +3,20 @@ import { CalendarDays, ChevronRight, Clock, MapPin, ScanLine } from "lucide-reac
 import { redirect } from "next/navigation";
 import { createClient, supabaseTerkonfigurasi } from "@/lib/supabase/server";
 import {
+  bolehAbsenKegiatan,
   first,
   formatJam,
   formatTanggal,
   formatTanggalJam,
+  jenisPegawai,
+  labelJenis,
   statusKegiatan,
   type Kegiatan,
 } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusKegiatanBadge } from "@/components/status-badge";
+import { BadgeJenis } from "@/components/jenis-badge";
 import { QrScannerDialog } from "@/components/absensi/qr-scanner-dialog";
 
 export const dynamic = "force-dynamic";
@@ -30,14 +34,25 @@ export default async function AbsensiPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?panel=absensi");
 
-  const kegiatanRes = await supabase!
-    .from("kegiatan")
-    .select("*")
-    .eq("is_active", true)
-    .order("starts_at", { ascending: true })
-    .limit(30);
+  const [{ data: profile }, kegiatanRes] = await Promise.all([
+    supabase!
+      .from("profiles")
+      .select("staff_type, staff_status")
+      .eq("id", user!.id)
+      .maybeSingle(),
+    supabase!
+      .from("kegiatan")
+      .select("*")
+      .eq("is_active", true)
+      .order("starts_at", { ascending: true })
+      .limit(60),
+  ]);
 
-  const kegiatanIds = (kegiatanRes.data ?? []).map((k) => k.id);
+  // Absensi dibedakan per kategori: tampilkan hanya kegiatan yang
+  // kategori pesertanya memuat kategori pegawai yang login.
+  const kegiatanSemua = (kegiatanRes.data ?? []) as Kegiatan[];
+  const kegiatan = kegiatanSemua.filter((k) => bolehAbsenKegiatan(k, profile));
+  const kegiatanIds = kegiatan.map((k) => k.id);
 
   const [riwayatRes, absenAktifRes] = await Promise.all([
     supabase!
@@ -57,7 +72,7 @@ export default async function AbsensiPage({
       : Promise.resolve({ data: [] as Array<{ kegiatan_id: string }> }),
   ]);
 
-  const kegiatan: Kegiatan[] = kegiatanRes.data ?? [];
+  const tidakAdaYangCocok = kegiatanSemua.length > 0 && kegiatan.length === 0;
   const riwayat = (riwayatRes.data ?? []).map((r) => ({
     ...r,
     kegiatan: first(r.kegiatan),
@@ -74,6 +89,10 @@ export default async function AbsensiPage({
     ? String(user.user_metadata.full_name).split(/\s+/).slice(0, 2).join(" ")
     : "";
 
+  const labelAkun = jenisPegawai(profile).length
+    ? labelJenis(jenisPegawai(profile))
+    : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -83,6 +102,13 @@ export default async function AbsensiPage({
         <p className="mt-1 text-sm text-slate-500">
           {formatTanggal(new Date())}. Absensi kehadiran dilakukan dengan
           memindai kode QR kegiatan yang disediakan petugas.
+          {labelAkun && (
+            <>
+              {" "}
+              Daftar kegiatan ditampilkan sesuai kategori Anda:{" "}
+              <span className="font-semibold text-slate-700">{labelAkun}</span>.
+            </>
+          )}
         </p>
       </div>
 
@@ -99,12 +125,14 @@ export default async function AbsensiPage({
               <CalendarDays className="h-6 w-6" />
             </div>
             <p className="mt-4 text-sm font-semibold text-slate-700">
-              Belum ada kegiatan aktif
+              {tidakAdaYangCocok
+                ? "Tidak ada kegiatan untuk kategori Anda"
+                : "Belum ada kegiatan aktif"}
             </p>
             <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-500">
-              Anda akan melihat kegiatan di sini setelah petugas membuat kegiatan
-              dari Dashboard. Anda juga dapat memindai QR kegiatan secara
-              langsung.
+              {tidakAdaYangCocok
+                ? "Saat ini belum ada kegiatan yang menyasar kategori pegawai Anda. Anda juga dapat memindai QR kegiatan secara langsung."
+                : "Anda akan melihat kegiatan di sini setelah petugas membuat kegiatan dari Dashboard. Anda juga dapat memindai QR kegiatan secara langsung."}
             </p>
             <div className="mt-5 flex justify-center">
               <QrScannerDialog />
@@ -144,6 +172,9 @@ export default async function AbsensiPage({
                             </h3>
                             <StatusKegiatanBadge kegiatan={k} />
                           </div>
+                          <div className="mt-1.5">
+                            <BadgeJenis kategori={k.kategori} />
+                          </div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
                             <span className="flex items-center gap-1">
                               <Clock className="h-3.5 w-3.5" />
@@ -178,8 +209,8 @@ export default async function AbsensiPage({
                                 Pindai QR untuk absen
                               </p>
                               <p className="mt-0.5 text-xs text-brand-600">
-                                Kehadiran hanya dapat dicatat melalui pemindaian
-                                QR kode kegiatan.
+                                Pindai QR, lalu kirim foto bukti kehadiran —
+                                kehadiran tercatat setelah foto terkirim.
                               </p>
                             </div>
                           </div>
@@ -206,6 +237,9 @@ export default async function AbsensiPage({
                         {formatTanggal(k.starts_at)} · mulai {formatJam(k.starts_at)} WIB
                         {k.location ? ` · ${k.location}` : ""}
                       </p>
+                      <div className="mt-1">
+                        <BadgeJenis kategori={k.kategori} />
+                      </div>
                     </div>
                     <Badge variant="warning">Belum dimulai</Badge>
                   </CardContent>
@@ -261,7 +295,8 @@ export default async function AbsensiPage({
 
       <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
         <ScanLine className="h-3.5 w-3.5" />
-        Absensi kehadiran hanya melalui pemindaian QR kode kegiatan.
+        Absensi melalui QR kegiatan, lalu wajib mengirimkan foto bukti
+        kehadiran agar tercatat.
       </p>
     </div>
   );
