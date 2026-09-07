@@ -1,18 +1,30 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Clock, MapPin, QrCode, CheckCircle2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Ban,
+  Clock,
+  MapPin,
+  QrCode,
+  CheckCircle2,
+} from "lucide-react";
 import { redirect } from "next/navigation";
 import { createClient, supabaseTerkonfigurasi } from "@/lib/supabase/server";
 import {
+  bolehAbsenKegiatan,
   formatJam,
   formatTanggal,
   formatTanggalJam,
+  jenisKegiatan,
+  jenisPegawai,
+  labelJenis,
   statusKegiatan,
   type Kegiatan,
 } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusKegiatanBadge } from "@/components/status-badge";
-import { AutoCheckIn } from "@/components/absensi/auto-check-in";
+import { BadgeJenis } from "@/components/jenis-badge";
+import { FormAbsenFoto } from "@/components/absensi/form-absen-foto";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +52,21 @@ export default async function KodeKegiatanPage({
   const k = kegiatan as Kegiatan;
   const status = statusKegiatan(k);
 
-  const { data: sudah } = await supabase!
-    .from("absensi")
-    .select("checked_in_at")
-    .eq("kegiatan_id", k.id)
-    .eq("user_id", user!.id)
-    .maybeSingle();
+  const [{ data: profile }, { data: sudah }] = await Promise.all([
+    supabase!
+      .from("profiles")
+      .select("full_name, staff_type, staff_status")
+      .eq("id", user!.id)
+      .maybeSingle(),
+    supabase!
+      .from("absensi")
+      .select("checked_in_at")
+      .eq("kegiatan_id", k.id)
+      .eq("user_id", user!.id)
+      .maybeSingle(),
+  ]);
+
+  const hakAbsen = bolehAbsenKegiatan(k, profile);
 
   return (
     <div className="space-y-5">
@@ -93,6 +114,11 @@ export default async function KodeKegiatanPage({
             )}
           </div>
 
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+            <span className="font-semibold">Peserta:</span>
+            <BadgeJenis kategori={k.kategori} />
+          </div>
+
           {k.description && (
             <p className="mt-3 text-sm leading-relaxed text-slate-600">
               {k.description}
@@ -117,8 +143,42 @@ export default async function KodeKegiatanPage({
                 Kegiatan ini telah diakhiri oleh petugas, sehingga tidak dapat
                 lagi digunakan untuk absen.
               </p>
+            ) : status === "terjadwal" ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium text-amber-800">
+                Kegiatan belum dimulai. Absen (dengan foto bukti kehadiran)
+                baru dapat dilakukan saat kegiatan berlangsung, mulai pukul{" "}
+                {formatJam(k.starts_at)} WIB.
+              </p>
+            ) : status === "selesai" ? (
+              <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                Waktu absen kegiatan ini telah selesai ({formatJam(k.ends_at)}{" "}
+                WIB), sehingga tidak dapat lagi digunakan untuk absen.
+              </p>
+            ) : !hakAbsen ? (
+              <div className="flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-4">
+                <Ban className="mt-0.5 h-6 w-6 shrink-0 text-red-500" />
+                <div>
+                  <p className="text-sm font-bold text-red-800">
+                    Kegiatan bukan untuk kategori Anda
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-red-700">
+                    Kegiatan ini khusus untuk kategori{" "}
+                    <span className="font-bold">
+                      {labelJenis(jenisKegiatan(k))}
+                    </span>
+                    , sedangkan akun Anda terdaftar sebagai{" "}
+                    <span className="font-bold">
+                      {jenisPegawai(profile).length
+                        ? labelJenis(jenisPegawai(profile))
+                        : "Administrator"}
+                    </span>
+                    . Absen pada kegiatan ini tidak dapat dilakukan melalui
+                    akun Anda.
+                  </p>
+                </div>
+              </div>
             ) : (
-              <AutoCheckIn kegiatanId={k.id} />
+              <FormAbsenFoto kegiatanId={k.id} />
             )}
           </div>
         </CardContent>

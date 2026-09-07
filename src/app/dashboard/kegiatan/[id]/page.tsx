@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, MapPin, Users } from "lucide-react";
+import { ArrowLeft, Camera, MapPin, Users } from "lucide-react";
 import { redirect } from "next/navigation";
 import { createClient, supabaseTerkonfigurasi } from "@/lib/supabase/server";
 import {
@@ -8,6 +8,9 @@ import {
   formatTanggal,
   formatJam,
   formatTanggalJam,
+  jenisKegiatan,
+  jenisPegawai,
+  labelJenis,
   type Kegiatan,
 } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,8 +23,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusKegiatanBadge } from "@/components/status-badge";
+import { BadgeJenis } from "@/components/jenis-badge";
+import { Badge } from "@/components/ui/badge";
 import { QrCard } from "@/components/dashboard/qr-card";
 import { KegiatanRowActions } from "@/components/dashboard/kegiatan-row-actions";
+
+/** Nama bucket Storage tempat foto bukti kehadiran (lihat supabase/schema.sql). */
+const BUCKET_BUKTI = "bukti-kehadiran";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +55,7 @@ export default async function KegiatanDetailPage({
   const { data: hadirRaw } = await supabase!
     .from("absensi")
     .select(
-      "id, checked_in_at, profiles!absensi_user_id_fkey(full_name, jabatan, unit, staff_type)"
+      "id, checked_in_at, foto_bukti, profiles!absensi_user_id_fkey(full_name, jabatan, unit, staff_type, staff_status)"
     )
     .eq("kegiatan_id", k.id)
     .order("checked_in_at", { ascending: true });
@@ -56,6 +64,21 @@ export default async function KegiatanDetailPage({
     ...r,
     profiles: first(r.profiles),
   }));
+
+  // Buat signed URL sementara untuk foto bukti (bucket privat) — admin
+  // berhak melihat semua foto lewat policy Storage di schema.sql.
+  const fotoUrls = new Map<string, string>();
+  const fotoPaths = hadir
+    .map((a) => String(a.foto_bukti ?? "").trim())
+    .filter((p): p is string => Boolean(p));
+  if (fotoPaths.length) {
+    const { data: signed } = await supabase!.storage
+      .from(BUCKET_BUKTI)
+      .createSignedUrls([...new Set(fotoPaths)], 60 * 60);
+    for (const item of signed ?? []) {
+      if (item?.path && item.signedUrl) fotoUrls.set(item.path, item.signedUrl);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -88,6 +111,10 @@ export default async function KegiatanDetailPage({
             )}
             <span className="font-mono text-slate-400">{k.code}</span>
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+            <span className="font-semibold">Jenis peserta:</span>
+            <BadgeJenis kategori={k.kategori} />
+          </div>
           {k.description && (
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
               {k.description}
@@ -104,7 +131,7 @@ export default async function KegiatanDetailPage({
           <QrCard
             code={k.code}
             kegiatanName={k.name}
-            subtitle={`${formatTanggal(k.starts_at)} · ${formatJam(k.starts_at)}–${formatJam(k.ends_at)} WIB${k.location ? ` · ${k.location}` : ""}`}
+            subtitle={`Jenis: ${labelJenis(jenisKegiatan(k))} · ${formatTanggal(k.starts_at)} · ${formatJam(k.starts_at)}–${formatJam(k.ends_at)} WIB${k.location ? ` · ${k.location}` : ""}`}
           />
         </div>
 
@@ -130,30 +157,89 @@ export default async function KegiatanDetailPage({
                     <TableRow>
                       <TableHead className="w-14">No</TableHead>
                       <TableHead>Nama</TableHead>
+                      <TableHead>Jenis</TableHead>
                       <TableHead>Jabatan</TableHead>
                       <TableHead className="whitespace-nowrap">Jam</TableHead>
+                      <TableHead className="whitespace-nowrap">Foto Bukti</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(hadir ?? []).map((a, i) => (
-                      <TableRow key={a.id ?? i}>
-                        <TableCell className="text-xs text-slate-400">{i + 1}</TableCell>
-                        <TableCell>
-                          <p className="text-sm font-medium text-slate-800">
-                            {a.profiles?.full_name}
-                          </p>
-                          <p className="text-[11px] text-slate-400">{a.profiles?.unit}</p>
-                        </TableCell>
-                        <TableCell className="max-w-[220px]">
-                          <p className="truncate text-xs text-slate-600">
-                            {a.profiles?.jabatan}
-                          </p>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs font-semibold text-emerald-600">
-                          {formatTanggalJam(a.checked_in_at)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {(hadir ?? []).map((a, i) => {
+                      const jenis = jenisPegawai(a.profiles);
+                      const fotoPath = String(a.foto_bukti ?? "").trim();
+                      const fotoUrl = fotoUrls.get(fotoPath) ?? null;
+                      return (
+                        <TableRow key={a.id ?? i}>
+                          <TableCell className="text-xs text-slate-400">{i + 1}</TableCell>
+                          <TableCell>
+                            <p className="text-sm font-medium text-slate-800">
+                              {a.profiles?.full_name}
+                            </p>
+                            <p className="text-[11px] text-slate-400">{a.profiles?.unit}</p>
+                          </TableCell>
+                          <TableCell>
+                            {jenis.length ? (
+                              <div className="flex flex-wrap gap-1">
+                                {jenis.map((t) => (
+                                  <Badge
+                                    key={t}
+                                    variant={
+                                      t === "ASN"
+                                        ? "info"
+                                        : t === "PPPK"
+                                          ? "success"
+                                          : t === "PPPSU"
+                                            ? "warning"
+                                            : "default"
+                                    }
+                                  >
+                                    {t}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[200px]">
+                            <p className="truncate text-xs text-slate-600">
+                              {a.profiles?.jabatan}
+                            </p>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs font-semibold text-emerald-600">
+                            {formatTanggalJam(a.checked_in_at)}
+                          </TableCell>
+                          <TableCell>
+                            {fotoPath ? (
+                              fotoUrl ? (
+                                <a
+                                  href={fotoUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Lihat foto bukti kehadiran (buka di tab baru)"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={fotoUrl}
+                                    alt={`Foto bukti kehadiran ${a.profiles?.full_name ?? ""}`}
+                                    className="h-10 w-10 rounded-md border border-slate-200 bg-slate-100 object-cover"
+                                  />
+                                </a>
+                              ) : (
+                                <span
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-slate-100 text-slate-400"
+                                  title="Foto tersimpan, tautan sedang tidak tersedia"
+                                >
+                                  <Camera className="h-4 w-4" />
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-xs text-slate-300">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

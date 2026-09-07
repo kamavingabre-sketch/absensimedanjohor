@@ -7,15 +7,21 @@ autentikasi dan database di **Supabase**, dan deploy di **Vercel**.
 ## Alur pemakaian
 
 1. **Petugas (admin)** masuk lewat **Panel Dashboard**, lalu membuat
-   **Kegiatan Baru** (nama, tanggal, jam, lokasi). Sistem langsung
-   menghasilkan **kode QR** untuk kegiatan tersebut.
+   **Kegiatan Baru** (nama, tanggal, jam, lokasi) dan **wajib memilih jenis
+   kegiatan/peserta**: ASN, PPPK, PPPSU, dan/atau Kepling. Absensi dibedakan
+   per jenis — kegiatan ASN hanya bisa diabsensi pegawai ASN, dst. Sistem
+   langsung menghasilkan **kode QR** untuk kegiatan tersebut.
 2. QR ditunjukkan/dicetak. **Pegawai** memindai QR (kamera ponsel atau
    tombol *Pindai QR* di aplikasi) → otomatis terbuka halaman absen kegiatan.
-3. Pegawai menekan **Hadir** — sistem mencatat nama, jabatan, jam (WIB),
-   dan titik GPS perangkat. Satu pegawai hanya bisa absen satu kali per
-   kegiatan.
+   Kegiatan yang bukan untuk kategori akunnya tidak dapat diabsensi.
+3. Pegawai **mengambil/mengirim foto bukti kehadiran** (swafoto di lokasi
+   atau dokumentasi kegiatan). Foto diunggah ke penyimpanan aman, **baru
+   setelah foto berhasil terkirim kehadiran dicatat** — nama, jabatan, jam
+   (WIB), titik GPS perangkat, dan tautan foto bukti. Satu pegawai hanya
+   bisa absen satu kali per kegiatan.
 4. Pegawai dapat melihat **riwayat absensi**-nya; admin dapat melihat daftar
-   pegawai yang hadir per kegiatan, data pegawai, dan ringkasan kehadiran.
+   pegawai yang hadir per kegiatan (termasuk **foto bukti kehadiran**),
+   data pegawai, dan ringkasan kehadiran.
 
 ## Keamanan
 
@@ -25,6 +31,13 @@ autentikasi dan database di **Supabase**, dan deploy di **Vercel**.
   - `kegiatan` — semua yang login boleh membaca; hanya admin menulis.
   - `absensi` — pegawai hanya bisa mem-baca data **sendiri** dan hanya boleh
     memasukkan absen atas nama **dirinya** (dicek di server + constraint unik).
+- **Foto bukti kehadiran** disimpan di bucket Storage privat
+  `bukti-kehadiran`; pegawai hanya bisa mengunggah ke folder miliknya dan
+  hanya bisa melihat fotonya sendiri. Admin bisa melihat semua untuk
+  verifikasi. File tidak publik — ditampilkan lewat *signed URL*.
+- Server action absen **menolak** bila foto bukti belum terkirim dan bila
+  kategori kegiatan tidak sesuai kategori akun (dicek dua kali: tampilan +
+  server).
 - Middleware Next membatasi `/dashboard` hanya untuk role `admin`.
 - Service role key **tidak** dipakai di aplikasi — hanya sekali saat seed.
 
@@ -37,6 +50,11 @@ Butuh: Node.js ≥ 18, akun Supabase, akun Vercel.
 1. Buat project baru di [supabase.com](https://supabase.com).
 2. Buka **SQL Editor → New query**, tempel seluruh isi
    [`supabase/schema.sql`](supabase/schema.sql), lalu **Run**.
+
+> Schema berisi migrasi aman + bucket Storage `bukti-kehadiran` (privat)
+> beserta kebijakan aksesnya. **Project yang sudah berjalan cukup
+> menjalankan ulang file ini** — kolom `kegiatan.kategori`,
+> `absensi.foto_bukti`, dan bucket Storage akan dibuat/dilengkapi otomatis.
 
 ### 2. Konfigurasi environment
 
@@ -116,8 +134,10 @@ src/
   components/
     ui/                  Komponen dasar (button, card, table, dialog, dll)
     dashboard/           Komponen panel admin
-    absensi/             Tombol absen + pemindai QR (kamera)
+    absensi/             Form absen + foto bukti, pemindai QR (kamera)
+    jenis-badge.tsx      Badge kategori kegiatan (ASN/PPPK/PPPSU/Kepling)
   lib/supabase/          Client Supabase (server, browser, middleware)
+                         + unggah-bukti.ts (kompres & unggah foto ke Storage)
 supabase/
   schema.sql             Tabel + RLS (jalan di SQL Editor Supabase)
   seed/                  Data pegawai (JSON) + skrip seed (node)
@@ -128,10 +148,21 @@ supabase/
 - **Kode QR**: token acak per kegiatan (mis. `KJ-7F3QZ2`); isi QR adalah
   tautan `https://<app>/absensi/<kode>`. Halaman QR dapat dicetak (tombol
   Cetak) atau tautannya disalin.
-- **Absen** tervalidasi di server: kegiatan harus aktif, jam absen harus
-  dalam rentang kegiatan, dan satu pegawai satu absen per kegiatan
-  (unique constraint).
+- **Jenis kegiatan**: saat membuat kegiatan, admin memilih kategori peserta
+  (ASN / PPPK / PPPSU / Kepling). Daftar kegiatan di panel pegawai otomatis
+  disaring sesuai kategori akun; pemindaian QR jenis lain ditolak, dan
+  server action memvalidasi ulang kategori + foto.
+- **Foto bukti kehadiran wajib**: pegawai mengambil/memilih foto → foto
+  dikompres & diunggah ke bucket Storage privat `bukti-kehadiran` (path
+  `<uuid-user>/<…>.jpg`) → **setelah unggah berhasil**, server action baru
+  mencatat absen (insert ditolak server bila `foto_bukti` kosong).
+  Foto lama tanpa foto tetap tampil dengan tanda "—".
+- **Absen** tervalidasi di server: kegiatan harus aktif, kategori akun harus
+  cocok, foto bukti harus sudah terkirim, jam absen harus dalam rentang
+  kegiatan, dan satu pegawai satu absen per kegiatan (unique constraint).
 - **Lokasi GPS** dicatat bila perangkat mengizinkannya; tidak diwajibkan.
+- **Foto di Dashboard**: tabel "Pegawai Hadir" menampilkan thumbnail foto
+  bukti lewat *signed URL* (berlaku sementara) dari bucket privat.
 - Semua waktu ditampilkan dalam **WIB (Asia/Jakarta)**.
 - Font: **Plus Jakarta Sans**.
 

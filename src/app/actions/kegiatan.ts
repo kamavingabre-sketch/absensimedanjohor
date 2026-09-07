@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, supabaseTerkonfigurasi } from "@/lib/supabase/server";
-import { buatTokenKegiatan } from "@/lib/utils";
+import { buatTokenKegiatan, JENIS_ABSEN } from "@/lib/utils";
 
 export interface KegiatanState {
   error?: string;
@@ -34,9 +34,22 @@ export async function createKegiatan(
   const timeStart = String(formData.get("time_start") || "");
   const timeEnd = String(formData.get("time_end") || "");
 
+  // Kategori peserta (ASN/PPPK/PPPSU/Kepling) — wajib dipilih minimal satu.
+  const kategori = [...new Set(
+    formData
+      .getAll("kategori")
+      .map((v) => String(v).trim())
+      .filter((v) => (JENIS_ABSEN as readonly string[]).includes(v))
+  )];
+
   if (!name) return { error: "Nama kegiatan wajib diisi." };
   if (!date || !timeStart || !timeEnd) {
     return { error: "Tanggal dan jam mulai/selesai wajib diisi." };
+  }
+  if (kategori.length === 0) {
+    return {
+      error: "Pilih minimal satu jenis kegiatan (ASN, PPPK, PPPSU, atau Kepling).",
+    };
   }
 
   // Tanggal & jam diambil dari form adalah waktu WIB —
@@ -64,6 +77,7 @@ export async function createKegiatan(
       name,
       description,
       location,
+      kategori,
       starts_at: startsAt.toISOString(),
       ends_at: endsAt.toISOString(),
       created_by: userData.user.id,

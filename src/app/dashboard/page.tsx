@@ -19,6 +19,7 @@ import {
 } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusKegiatanBadge } from "@/components/status-badge";
+import { BadgeJenis } from "@/components/jenis-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -190,6 +191,9 @@ export default async function DashboardOverviewPage() {
                           {formatJam(k.ends_at)}
                           {k.location ? ` · ${k.location}` : ""}
                         </p>
+                        <div className="mt-1">
+                          <BadgeJenis kategori={k.kategori} />
+                        </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-3">
                         <span className="hidden text-xs text-slate-400 sm:inline">
